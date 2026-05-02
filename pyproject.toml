@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gmaprium"
+version = "0.1.0"
+description = "Folium-style Python helpers for rendering Google Maps."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+authors = [
+  { name = "Kentaro" }
+]
+keywords = ["google-maps", "maps", "folium", "streamlit", "heatmap", "geojson"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "jinja2>=3.1"
+]
+
+[project.urls]
+Homepage = "https://github.com/KentaroAOKI/gmaprium"
+Repository = "https://github.com/KentaroAOKI/gmaprium"
+Issues = "https://github.com/KentaroAOKI/gmaprium/issues"
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "pytest>=8",
+  "twine>=5"
+]
+streamlit = [
+  "streamlit>=1.30"
+]
+
+[tool.hatch.build]
+exclude = [
+  "/.gitignore",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gmaprium"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/LICENSE",
+  "/MANIFEST.in",
+  "/README.md",
+  "/pyproject.toml",
+  "/src",
+  "/tests",
+  "/examples",
+]
+exclude = [
+  "/.github",
+  "/.gitignore",
+  "/.pytest_cache",
+  "/apm.lock.yaml",
+  "/apm.yml",
+  "/apm_modules",
+  "/examples/*.html",
+  "**/__pycache__",
+  "**/*.pyc",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
