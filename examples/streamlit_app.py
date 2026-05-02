@@ -12,7 +12,7 @@ st.set_page_config(page_title="gmaprium Streamlit example", layout="wide")
 st.title("gmaprium")
 
 
-@st.cache_data
+@st.cache_data  
 def generate_japan_heatmap_points(count: int = 10_000, seed: int = 42) -> list[list[float]]:
     rng = random.Random(seed)
     return [
@@ -38,7 +38,15 @@ m = Map(
 
 Marker([35.6812, 139.7671], popup="Tokyo Station", tooltip="Tokyo Station", name="Markers").add_to(m)
 HeatMap(
-    generate_japan_heatmap_points(),
+    [
+        [35.6812, 139.7671],
+        [35.6825, 139.7685],
+        [35.6840, 139.7700],
+        [35.6895, 139.6917],
+        [35.6920, 139.6940],
+        [35.6586, 139.7454],
+        [35.6600, 139.7480],
+    ],
     name="Heat",
     max_zoom=7,
 ).add_to(m)
