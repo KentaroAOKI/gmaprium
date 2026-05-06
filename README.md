@@ -21,6 +21,8 @@ m = Map(
     api_key="YOUR_GOOGLE_MAPS_API_KEY",
     map_type="roadmap",
     height="500px",
+    fullscreen_control=False,
+    street_view_control=False,
 )
 
 Marker([35.6812, 139.7671], popup="Tokyo Station", tooltip="Tokyo", name="Stations").add_to(m)
@@ -39,6 +41,9 @@ html = m.render_fragment()
 ```
 
 You can also pass the API key with the `GOOGLE_MAPS_API_KEY` environment variable.
+
+Set `fullscreen_control=True` or `fullscreen_control=False` to control Google Maps SDK's built-in fullscreen button.
+Set `street_view_control=True` or `street_view_control=False` to control the built-in Street View button.
 
 Markers use Google's `AdvancedMarkerElement`. If you add markers without passing `map_id=...`, the renderer uses Google's `DEMO_MAP_ID` for local testing.
 
