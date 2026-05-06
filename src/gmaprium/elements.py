@@ -41,6 +41,8 @@ class Map:
         width: str | int = "100%",
         height: str | int = "100%",
         map_id: str | None = None,
+        fullscreen_control: bool | None = None,
+        street_view_control: bool | None = None,
         options: dict[str, Any] | None = None,
     ) -> None:
         self.location = _location(location)
@@ -53,6 +55,8 @@ class Map:
         self.width = _css_size(width)
         self.height = _css_size(height)
         self.map_id = map_id
+        self.fullscreen_control = fullscreen_control
+        self.street_view_control = street_view_control
         self.options = options or {}
         self.children: list[Element] = []
         self._id = f"fgm_{id(self):x}"
@@ -73,6 +77,10 @@ class Map:
             "mapTypeId": self.map_type,
             **self.options,
         }
+        if self.fullscreen_control is not None:
+            config["fullscreenControl"] = self.fullscreen_control
+        if self.street_view_control is not None:
+            config["streetViewControl"] = self.street_view_control
         if self.map_id or needs_marker:
             config["mapId"] = self.map_id or _DEMO_MAP_ID
 
@@ -400,12 +408,18 @@ def _render_fragment(context: dict[str, Any]) -> str:
         if context["layer_control"]
         else ""
     )
+    fullscreen_style = (
+        f"<style>#{map_id}_wrap:fullscreen,#{map_id}_wrap:fullscreen>#{map_id},"
+        f"#{map_id}:fullscreen,#{map_id}:fullscreen .gm-style{{width:100vw!important;height:100vh!important}}"
+        f"#{map_id}_wrap:-webkit-full-screen,#{map_id}_wrap:-webkit-full-screen>#{map_id},"
+        f"#{map_id}:-webkit-full-screen,#{map_id}:-webkit-full-screen .gm-style{{width:100vw!important;height:100vh!important}}</style>\n"
+    )
     control_div = f'<div id="{map_id}_layers" hidden></div>' if context["layer_control"] else ""
     return f"""<div id="{map_id}_wrap" style="position:relative;width:{context['width']};height:{context['height']};">
-  <div id="{map_id}" style="width:100%;height:100%;"></div>
+  <div id="{map_id}" style="position:relative;width:100%;height:100%;"></div>
   {control_div}
 </div>
-{control_style}<script>
+{fullscreen_style}{control_style}<script>
 function {callback}_loadScript(src, test) {{
   if (test()) return Promise.resolve();
   return new Promise((resolve, reject) => {{
@@ -468,7 +482,7 @@ window.{callback} = async function() {{
       const marker = new AdvancedMarkerElement(markerOptions);
       if (spec.popup) {{
         const info = new InfoWindow({{ content: spec.popup }});
-        marker.addListener("click", () => info.open({{ anchor: marker, map }}));
+        marker.addListener("gmp-click", () => info.open({{ anchor: marker, map }}));
       }}
       track(spec.name, marker, visible => marker.map = visible ? map : null);
     }} else if (spec.type === "polyline") {{
@@ -499,30 +513,73 @@ window.{callback} = async function() {{
           this.circleBlur = null;
           this.gradientPixels = null;
           this.gradientKey = null;
+          this.resizeObserver = null;
+          this.drawScheduled = false;
+          this.delayedDrawScheduled = false;
+          this.delayedDrawTimers = [];
+          this.handleResize = () => this.scheduleDraw(true);
         }}
 
         onAdd() {{
           this.canvas = document.createElement("canvas");
           this.canvas.style.position = "absolute";
-          this.canvas.style.inset = "0";
+          this.canvas.style.left = "0";
+          this.canvas.style.top = "0";
           this.canvas.style.zIndex = "5";
           this.canvas.style.pointerEvents = "none";
           this.canvas.dataset.fgmHeatmap = "true";
-          this.getMap().getDiv().appendChild(this.canvas);
-          this.listeners.push(google.maps.event.addListener(this.getMap(), "idle", () => this.draw()));
-          this.listeners.push(google.maps.event.addListener(this.getMap(), "bounds_changed", () => this.draw()));
-          this.listeners.push(google.maps.event.addListener(this.getMap(), "zoom_changed", () => this.draw()));
+          this.getPanes().overlayLayer.appendChild(this.canvas);
+          this.listeners.push(google.maps.event.addListener(this.getMap(), "idle", () => this.scheduleDraw()));
+          this.listeners.push(google.maps.event.addListener(this.getMap(), "bounds_changed", () => this.scheduleDraw()));
+          this.listeners.push(google.maps.event.addListener(this.getMap(), "zoom_changed", () => this.scheduleDraw()));
+          if (window.ResizeObserver) {{
+            this.resizeObserver = new ResizeObserver(() => this.scheduleDraw(true));
+            this.resizeObserver.observe(this.getMap().getDiv());
+          }}
+          window.addEventListener("resize", this.handleResize);
+          document.addEventListener("fullscreenchange", this.handleResize);
+        }}
+
+        scheduleDraw(delayed = false) {{
+          if (!this.drawScheduled) {{
+            this.drawScheduled = true;
+            window.requestAnimationFrame(() => {{
+              this.drawScheduled = false;
+              this.draw();
+            }});
+          }}
+          if (delayed && !this.delayedDrawScheduled) {{
+            this.delayedDrawScheduled = true;
+            for (const delay of [100, 300, 700]) {{
+              const timer = window.setTimeout(() => {{
+                this.scheduleDraw();
+                if (delay === 700) this.delayedDrawScheduled = false;
+              }}, delay);
+              this.delayedDrawTimers.push(timer);
+            }}
+          }}
         }}
 
         draw() {{
           if (!this.canvas) return;
           const projection = this.getProjection();
+          const panes = this.getPanes();
+          const map = this.getMap();
           const mapDiv = this.getMap().getDiv();
-          if (!projection || !mapDiv) return;
-          const width = Math.max(1, mapDiv.clientWidth);
-          const height = Math.max(1, mapDiv.clientHeight);
-          this.canvas.width = width;
-          this.canvas.height = height;
+          if (!projection || !panes || !mapDiv) return;
+          if (this.canvas.parentElement !== panes.overlayLayer) {{
+            panes.overlayLayer.appendChild(this.canvas);
+          }}
+          const viewport = this.getDrawViewport(mapDiv);
+          const width = viewport.width;
+          const height = viewport.height;
+          const centerPixel = projection.fromLatLngToDivPixel(map.getCenter());
+          if (!centerPixel) return;
+          const topLeft = {{ x: centerPixel.x - width / 2, y: centerPixel.y - height / 2 }};
+          if (this.canvas.width !== width) this.canvas.width = width;
+          if (this.canvas.height !== height) this.canvas.height = height;
+          this.canvas.style.left = Math.round(topLeft.x) + "px";
+          this.canvas.style.top = Math.round(topLeft.y) + "px";
           this.canvas.style.width = width + "px";
           this.canvas.style.height = height + "px";
 
@@ -544,14 +601,18 @@ window.{callback} = async function() {{
             maxX: width + drawRadius,
             maxY: height + drawRadius
           }};
+          const geoBounds = this.getExpandedGeoBounds(projection, topLeft, width, height, drawRadius);
           const cellSize = drawRadius / 2;
           const grid = [];
+          let hasCells = false;
 
           for (const point of this.data) {{
             const lng = point.position[0];
             const lat = point.position[1];
-            const pixel = projection.fromLatLngToContainerPixel(new google.maps.LatLng(lat, lng));
-            if (!pixel) continue;
+            if (geoBounds && !this.containsLatLng(geoBounds, lat, lng)) continue;
+            const divPixel = projection.fromLatLngToDivPixel(new google.maps.LatLng(lat, lng));
+            if (!divPixel) continue;
+            const pixel = {{ x: divPixel.x - topLeft.x, y: divPixel.y - topLeft.y }};
             if (pixel.x < bounds.minX || pixel.x > bounds.maxX || pixel.y < bounds.minY || pixel.y > bounds.maxY) continue;
             const x = Math.floor(pixel.x / cellSize) + 2;
             const y = Math.floor(pixel.y / cellSize) + 2;
@@ -565,7 +626,10 @@ window.{callback} = async function() {{
               cell[1] = (cell[1] * cell[2] + pixel.y * value) / (cell[2] + value);
               cell[2] += value;
             }}
+            hasCells = true;
           }}
+
+          if (!hasCells) return;
 
           for (const row of grid) {{
             if (!row) continue;
@@ -580,6 +644,45 @@ window.{callback} = async function() {{
           const image = ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
           this.colorize(image.data, this.getGradient());
           ctx.putImageData(image, 0, 0);
+        }}
+
+        getExpandedGeoBounds(projection, topLeft, width, height, margin) {{
+          const northWest = projection.fromDivPixelToLatLng(new google.maps.Point(topLeft.x - margin, topLeft.y - margin));
+          const southEast = projection.fromDivPixelToLatLng(new google.maps.Point(topLeft.x + width + margin, topLeft.y + height + margin));
+          if (!northWest || !southEast) return null;
+          return {{
+            north: northWest.lat(),
+            south: southEast.lat(),
+            west: northWest.lng(),
+            east: southEast.lng()
+          }};
+        }}
+
+        containsLatLng(bounds, lat, lng) {{
+          if (lat > bounds.north || lat < bounds.south) return false;
+          if (bounds.west <= bounds.east) return lng >= bounds.west && lng <= bounds.east;
+          return lng >= bounds.west || lng <= bounds.east;
+        }}
+
+        getDrawViewport(mapDiv) {{
+          const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+          const inFullscreen = fullscreenElement && (
+            fullscreenElement === mapDiv ||
+            fullscreenElement.contains(mapDiv) ||
+            mapDiv.contains(fullscreenElement)
+          );
+          if (inFullscreen) {{
+            const visualViewport = window.visualViewport;
+            const rect = fullscreenElement.getBoundingClientRect();
+            return {{
+              width: Math.max(1, Math.round((visualViewport && visualViewport.width) || window.innerWidth || rect.width || mapDiv.clientWidth)),
+              height: Math.max(1, Math.round((visualViewport && visualViewport.height) || window.innerHeight || rect.height || mapDiv.clientHeight))
+            }};
+          }}
+          return {{
+            width: Math.max(1, mapDiv.clientWidth),
+            height: Math.max(1, mapDiv.clientHeight)
+          }};
         }}
 
         getCircle(radius, blur) {{
@@ -636,6 +739,16 @@ window.{callback} = async function() {{
             google.maps.event.removeListener(listener);
           }}
           this.listeners = [];
+          if (this.resizeObserver) {{
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+          }}
+          for (const timer of this.delayedDrawTimers) {{
+            window.clearTimeout(timer);
+          }}
+          this.delayedDrawTimers = [];
+          window.removeEventListener("resize", this.handleResize);
+          document.removeEventListener("fullscreenchange", this.handleResize);
           if (this.canvas) {{
             this.canvas.remove();
             this.canvas = null;

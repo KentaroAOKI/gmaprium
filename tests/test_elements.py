@@ -38,6 +38,50 @@ def test_render_html_wraps_fragment() -> None:
     assert "test-key" in html
 
 
+def test_map_fullscreen_control_option() -> None:
+    disabled = Map([35.0, 139.0], api_key="test-key", fullscreen_control=False).render_fragment()
+    enabled = Map([35.0, 139.0], api_key="test-key", fullscreen_control=True).render_fragment()
+    default = Map([35.0, 139.0], api_key="test-key").render_fragment()
+
+    assert '"fullscreenControl":false' in disabled
+    assert '"fullscreenControl":true' in enabled
+    assert "fullscreenControl" not in default
+
+
+def test_map_fullscreen_control_argument_overrides_raw_options() -> None:
+    html = Map(
+        [35.0, 139.0],
+        api_key="test-key",
+        fullscreen_control=True,
+        options={"fullscreenControl": False},
+    ).render_fragment()
+
+    assert '"fullscreenControl":true' in html
+    assert '"fullscreenControl":false' not in html
+
+
+def test_map_street_view_control_option() -> None:
+    disabled = Map([35.0, 139.0], api_key="test-key", street_view_control=False).render_fragment()
+    enabled = Map([35.0, 139.0], api_key="test-key", street_view_control=True).render_fragment()
+    default = Map([35.0, 139.0], api_key="test-key").render_fragment()
+
+    assert '"streetViewControl":false' in disabled
+    assert '"streetViewControl":true' in enabled
+    assert "streetViewControl" not in default
+
+
+def test_map_street_view_control_argument_overrides_raw_options() -> None:
+    html = Map(
+        [35.0, 139.0],
+        api_key="test-key",
+        street_view_control=True,
+        options={"streetViewControl": False},
+    ).render_fragment()
+
+    assert '"streetViewControl":true' in html
+    assert '"streetViewControl":false' not in html
+
+
 def test_repr_html_returns_fragment_for_notebooks() -> None:
     html = Map([35.0, 139.0], api_key="test-key", height="420px")._repr_html_()
 
@@ -55,6 +99,8 @@ def test_marker_render_uses_advanced_marker_with_demo_map_id() -> None:
 
     assert "new AdvancedMarkerElement" in html
     assert "new google.maps.Marker" not in html
+    assert 'marker.addListener("gmp-click"' in html
+    assert 'marker.addListener("click"' not in html
     assert '"mapId":"DEMO_MAP_ID"' in html
 
 
@@ -170,9 +216,56 @@ def test_render_includes_optional_heatmap_and_layer_control_assets() -> None:
     assert "deck.gl" not in html
     assert "CanvasHeatmapOverlay" in html
     assert "google.maps.OverlayView" in html
-    assert "fromLatLngToContainerPixel" in html
+    assert "fromLatLngToDivPixel" in html
+    assert "fromLatLngToContainerPixel" not in html
     assert "dataset.fgmHeatmap" in html
+    assert 'style="position:relative;width:100%;height:100%;"' in html
+    assert ":fullscreen" in html
+    assert "height:100vh!important" in html
+    assert "width:100vw!important" in html
+    assert ":-webkit-full-screen" in html
+    assert ".gm-style" in html
+    assert "this.getPanes().overlayLayer.appendChild(this.canvas)" in html
+    assert "this.canvas.parentElement !== panes.overlayLayer" in html
+    assert "panes.overlayLayer.appendChild(this.canvas)" in html
+    assert "floatPane.appendChild(this.canvas)" not in html
+    assert "projection.fromLatLngToDivPixel(map.getCenter())" in html
+    assert "centerPixel.x - width / 2" in html
+    assert "centerPixel.y - height / 2" in html
+    assert "if (this.canvas.width !== width) this.canvas.width = width" in html
+    assert "if (this.canvas.height !== height) this.canvas.height = height" in html
+    assert "getDrawViewport(mapDiv)" in html
+    assert "document.fullscreenElement || document.webkitFullscreenElement" in html
+    assert "window.visualViewport" in html
+    assert "window.innerHeight" in html
+    assert "mapDiv.clientHeight" in html
+    assert "console.log" not in html
+    assert "drawScheduled" in html
+    assert "delayedDrawScheduled" in html
+    assert "delayedDrawTimers" in html
+    assert "requestAnimationFrame" in html
+    assert '"bounds_changed", () => this.scheduleDraw()' in html
+    assert '"zoom_changed", () => this.scheduleDraw()' in html
+    assert "new ResizeObserver(() => this.scheduleDraw(true))" in html
+    assert "getExpandedGeoBounds(projection, topLeft, width, height, drawRadius)" in html
+    assert "fromDivPixelToLatLng" in html
+    assert "!this.containsLatLng(geoBounds, lat, lng)" in html
+    assert "let hasCells = false" in html
+    assert "if (!hasCells) return" in html
+    assert "mapBounds.getNorthEast().lat()" not in html
+    assert "mapBounds.getSouthWest().lng()" not in html
+    assert "divPixel.x - topLeft.x" in html
+    assert "divPixel.y - topLeft.y" in html
+    assert "mapDiv.appendChild(this.canvas)" not in html
     assert 'this.canvas.style.zIndex = "5"' in html
+    assert "ResizeObserver" in html
+    assert 'window.addEventListener("resize", this.handleResize)' in html
+    assert 'document.addEventListener("fullscreenchange", this.handleResize)' in html
+    assert "for (const delay of [100, 300, 700])" in html
+    assert "this.resizeObserver.disconnect()" in html
+    assert "window.clearTimeout(timer)" in html
+    assert 'window.removeEventListener("resize", this.handleResize)' in html
+    assert 'document.removeEventListener("fullscreenchange", this.handleResize)' in html
     assert "cellSize = drawRadius / 2" in html
     assert "this.options.maxZoom ?? 18" in html
     assert "maxZoom - zoom" in html
@@ -183,7 +276,7 @@ def test_render_includes_optional_heatmap_and_layer_control_assets() -> None:
     assert "putImageData(image, 0, 0)" in html
     assert "devicePixelRatio" not in html
     assert "setTransform" not in html
-    assert '"idle", () => this.draw()' in html
+    assert '"idle", () => this.scheduleDraw()' in html
     assert "layer.setMap(visible ? map : null)" in html
     assert "const panorama = map.getStreetView()" in html
     assert 'panorama.addListener("visible_changed"' in html
