@@ -1,6 +1,6 @@
 lockfile_version: '1'
-generated_at: '2026-05-02T00:19:45.123805+00:00'
-apm_version: 0.11.0
+generated_at: '2026-05-09T15:46:35.350991+00:00'
+apm_version: 0.12.4
 dependencies:
 - repo_url: github/awesome-copilot
   host: github.com
@@ -9,11 +9,13 @@ dependencies:
   is_virtual: true
   package_type: marketplace_plugin
   deployed_files:
+  - .agents/skills/context-map
+  - .agents/skills/refactor-plan
+  - .agents/skills/what-context-needed
+  - .codex/agents/context-architect.toml
   - .github/agents/context-architect.agent.md
-  - .github/skills/context-map
-  - .github/skills/refactor-plan
-  - .github/skills/what-context-needed
   deployed_file_hashes:
+    .codex/agents/context-architect.toml: sha256:6fadaaacdfad362456dfa97674be6dcc790895c5f3b9ab93be5fa071ef9ad0d9
     .github/agents/context-architect.agent.md: sha256:6da7a854a670d2810fc61b173eea2500a2af644d8292f58e3d440ac2d120ee0d
   content_hash: sha256:8aa73614daa1064310331cab62f0a6bb1037d8b9bc8f2d11bd1a9dba482e4103
 - repo_url: github/awesome-copilot
@@ -23,5 +25,5 @@ dependencies:
   is_virtual: true
   package_type: claude_skill
   deployed_files:
-  - .github/skills/documentation-writer
+  - .agents/skills/documentation-writer
   content_hash: sha256:ee53d65b163cd7eb953a930c95841cfe398cc2c0bd24c06508bbaa07c432be35

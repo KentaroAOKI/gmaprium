@@ -5,7 +5,7 @@ import random
 
 import streamlit as st
 
-from gmaprium import HeatMap, LayerControl, Map, Marker, st_google_map
+from gmaprium import Draw, HeatMap, LayerControl, Map, Marker, st_gmaprium
 
 
 st.set_page_config(page_title="gmaprium Streamlit example", layout="wide")
@@ -50,6 +50,10 @@ HeatMap(
     name="Heat",
     max_zoom=7,
 ).add_to(m)
+Draw(export=True, filename="drawn.geojson", position="topleft").add_to(m)
 LayerControl().add_to(m)
 
-st_google_map(m)
+draw_result = st_gmaprium(m, key="streamlit-example-map")
+
+st.subheader("Draw result")
+st.json(draw_result)

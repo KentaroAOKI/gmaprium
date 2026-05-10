@@ -1,6 +1,11 @@
 
 # APM dependencies
 apm_modules/
+.codex/
+.agents/
+
+# Vscode
+.vscode/
 
 # Python
 __pycache__/

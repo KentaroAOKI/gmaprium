@@ -1,11 +1,13 @@
 """Folium-style Python helpers for Google Maps."""
 
-from .elements import Circle, GeoJson, GoogleMapsError, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
-from .streamlit import st_google_map
+from .elements import Choropleth, Circle, Draw, GeoJson, GoogleMapsError, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
+from .streamlit import st_gmaprium
 from .tiles import GoogleMapType, add_google_tiles, google_tiles_url
 
 __all__ = [
     "Circle",
+    "Choropleth",
+    "Draw",
     "GeoJson",
     "GoogleMapType",
     "GoogleMapsError",
@@ -17,5 +19,5 @@ __all__ = [
     "Polyline",
     "add_google_tiles",
     "google_tiles_url",
-    "st_google_map",
+    "st_gmaprium",
 ]
