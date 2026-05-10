@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body, #root {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+    }
+    iframe {
+      border: 0;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const STREAMLIT_READY = "streamlit:componentReady";
+    const STREAMLIT_RENDER = "streamlit:render";
+    const STREAMLIT_SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+    const STREAMLIT_SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+    const DRAW_STATE_MESSAGE = "gmaprium:draw_state";
+    const root = document.getElementById("root");
+    let iframe = null;
+    let currentHtml = null;
+    let currentReturnedObjects = ["all_drawings", "last_active_drawing"];
+
+    function postStreamlitMessage(type, data) {
+      window.parent.postMessage({ isStreamlitMessage: true, type, ...data }, "*");
+    }
+
+    function setComponentReady() {
+      postStreamlitMessage(STREAMLIT_READY, { apiVersion: 1 });
+    }
+
+    function setFrameHeight(height) {
+      postStreamlitMessage(STREAMLIT_SET_FRAME_HEIGHT, { height });
+    }
+
+    function setComponentValue(value) {
+      postStreamlitMessage(STREAMLIT_SET_COMPONENT_VALUE, { value, dataType: "json" });
+    }
+
+    function filterReturnedObjects(value) {
+      const names = Array.isArray(currentReturnedObjects) ? currentReturnedObjects : [];
+      if (!names.length) return null;
+      const filtered = {};
+      for (const name of names) {
+        if (Object.prototype.hasOwnProperty.call(value, name)) {
+          filtered[name] = value[name];
+        }
+      }
+      return filtered;
+    }
+
+    function injectDrawBridge(html) {
+      const bridge = `<script>
+(function() {
+  window.addEventListener("gmaprium-draw-updated", function(event) {
+    window.parent.postMessage({ type: "${DRAW_STATE_MESSAGE}", value: event.detail }, "*");
+  });
+})();
+<\/script>`;
+      if (html.includes("</body>")) {
+        return html.replace("</body>", bridge + "</body>");
+      }
+      return html + bridge;
+    }
+
+    function ensureIframe(args) {
+      const height = Number(args.height) || 500;
+      const width = args.width ? Number(args.width) + "px" : "100%";
+      const scrolling = args.scrolling ? "yes" : "no";
+      root.style.height = height + "px";
+
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        root.appendChild(iframe);
+      }
+
+      iframe.style.height = height + "px";
+      iframe.style.width = width;
+      iframe.setAttribute("scrolling", scrolling);
+
+      if (args.html !== currentHtml) {
+        currentHtml = args.html;
+        iframe.srcdoc = injectDrawBridge(args.html || "");
+      }
+    }
+
+    window.addEventListener("message", event => {
+      const data = event.data || {};
+      if (data.type === STREAMLIT_RENDER) {
+        const args = data.args || {};
+        currentReturnedObjects = Array.isArray(args.returned_objects) ? args.returned_objects : currentReturnedObjects;
+        ensureIframe(args);
+        setFrameHeight(Number(args.height) || 500);
+        return;
+      }
+
+      if (data.type === DRAW_STATE_MESSAGE) {
+        const value = filterReturnedObjects(data.value || {});
+        if (value) setComponentValue(value);
+      }
+    });
+
+    setComponentReady();
+  </script>
+</body>
+</html>

@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 
 import pytest
 
-from gmaprium import Circle, GeoJson, GoogleMapsError, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
+from gmaprium import Choropleth, Circle, Draw, GeoJson, GoogleMapsError, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
+
+
+def _sample_choropleth_geojson() -> dict:
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "properties": {"id": "a"}, "geometry": None},
+            {"type": "Feature", "properties": {"id": "b"}, "geometry": None},
+            {"type": "Feature", "properties": {"id": "c"}, "geometry": None},
+        ],
+    }
 
 
 def test_map_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -167,6 +179,262 @@ def test_geojson_style_function_receives_sample_feature() -> None:
     spec = GeoJson(geojson, style_function=lambda feature: {"fillColor": feature["properties"]["color"]}).to_spec()
 
     assert spec["style"] == {"fillColor": "#f00"}
+
+
+def test_choropleth_styles_geojson_with_joined_data() -> None:
+    geojson = _sample_choropleth_geojson()
+
+    spec = Choropleth(
+        geojson,
+        data={"a": 10, "b": 20, "c": float("nan")},
+        key_on="feature.properties.id",
+        bins=[0, 15, 30],
+        fill_color="YlOrRd",
+        nan_fill_color="#999999",
+        fill_opacity=0.7,
+        nan_fill_opacity=0.2,
+        line_color="#333333",
+        line_weight=2,
+        line_opacity=0.8,
+        name="Choropleth",
+        legend_name="Values",
+        highlight=True,
+    ).to_spec()
+
+    features = spec["data"]["features"]
+
+    assert spec["type"] == "choropleth"
+    assert spec["name"] == "Choropleth"
+    assert features[0]["properties"]["__gmaprium_choropleth_style"] == {
+        "strokeWeight": 2,
+        "strokeOpacity": 0.8,
+        "strokeColor": "#333333",
+        "fillOpacity": 0.7,
+        "fillColor": "#ffffcc",
+    }
+    assert features[1]["properties"]["__gmaprium_choropleth_style"]["fillColor"] == "#800026"
+    assert features[2]["properties"]["__gmaprium_choropleth_style"]["fillColor"] == "#999999"
+    assert features[2]["properties"]["__gmaprium_choropleth_style"]["fillOpacity"] == 0.2
+    assert spec["highlightStyle"] == {"strokeWeight": 4, "fillOpacity": 0.8999999999999999}
+    assert spec["legend"] == {
+        "caption": "Values",
+        "entries": [
+            {"color": "#ffffcc", "label": "0 - 15"},
+            {"color": "#800026", "label": "15 - 30"},
+        ],
+    }
+
+
+def test_choropleth_accepts_list_series_and_dataframe_like_data() -> None:
+    geojson = _sample_choropleth_geojson()
+
+    class SeriesLike:
+        def to_dict(self) -> dict[str, int]:
+            return {"a": 1, "b": 2}
+
+    class FrameColumn:
+        def __init__(self, values: dict[str, int]) -> None:
+            self.values = values
+
+        def to_dict(self) -> dict[str, int]:
+            return self.values
+
+    class FrameIndexed:
+        def __init__(self, values: dict[str, int]) -> None:
+            self.values = values
+
+        def __getitem__(self, column: str) -> FrameColumn:
+            assert column == "value"
+            return FrameColumn(self.values)
+
+    class FrameLike:
+        def set_index(self, column: str) -> FrameIndexed:
+            assert column == "id"
+            return FrameIndexed({"a": 1, "b": 2})
+
+    list_spec = Choropleth(geojson, data=[("a", 1), ("b", 2)], key_on="feature.properties.id").to_spec()
+    series_spec = Choropleth(geojson, data=SeriesLike(), key_on="feature.properties.id").to_spec()
+    frame_spec = Choropleth(geojson, data=FrameLike(), columns=["id", "value"], key_on="feature.properties.id").to_spec()
+
+    assert list_spec["data"]["features"][0]["properties"]["__gmaprium_choropleth_style"]["fillOpacity"] == 0.6
+    assert series_spec["data"]["features"][0]["properties"]["__gmaprium_choropleth_style"]["fillOpacity"] == 0.6
+    assert frame_spec["data"]["features"][0]["properties"]["__gmaprium_choropleth_style"]["fillOpacity"] == 0.6
+
+
+def test_choropleth_default_style_without_data() -> None:
+    spec = Choropleth(_sample_choropleth_geojson(), fill_color="#123456", fill_opacity=0.4).to_spec()
+
+    assert spec["legend"] is None
+    assert spec["data"]["features"][0]["properties"]["__gmaprium_choropleth_style"]["fillColor"] == "#123456"
+    assert spec["data"]["features"][0]["properties"]["__gmaprium_choropleth_style"]["fillOpacity"] == 0.4
+
+
+def test_choropleth_validates_key_bins_topojson_and_jenks(monkeypatch: pytest.MonkeyPatch) -> None:
+    geojson = _sample_choropleth_geojson()
+
+    original_import = builtins.__import__
+
+    def import_without_jenkspy(name: str, *args: object, **kwargs: object) -> object:
+        if name == "jenkspy":
+            raise ImportError("No module named jenkspy")
+        return original_import(name, *args, **kwargs)
+
+    with pytest.raises(ValueError, match="key_on"):
+        Choropleth(geojson, data={"a": 1}, key_on="feature.properties.missing").to_spec()
+
+    with pytest.raises(ValueError, match="provided bins"):
+        Choropleth(geojson, data={"a": 100}, key_on="feature.properties.id", bins=[0, 10]).to_spec()
+
+    with pytest.raises(NotImplementedError, match="topojson"):
+        Choropleth(geojson, topojson="objects.states")
+
+    monkeypatch.setattr(builtins, "__import__", import_without_jenkspy)
+    with pytest.raises(RuntimeError, match="jenkspy"):
+        Choropleth(geojson, data={"a": 1}, key_on="feature.properties.id", use_jenks=True).to_spec()
+
+
+def test_draw_spec_defaults_and_options() -> None:
+    spec = Draw(
+        export=True,
+        filename="drawn.geojson",
+        position="bottomright",
+        show_geometry_on_click=False,
+        draw_options={"circle": False, "strokeColor": "#000"},
+        edit_options={"poly": {"allowIntersection": False}},
+        on={"click": "handler"},
+    ).to_spec()
+
+    assert spec == {
+        "type": "draw",
+        "export": True,
+        "filename": "drawn.geojson",
+        "position": "bottomright",
+        "showGeometryOnClick": False,
+        "drawOptions": {"circle": False, "strokeColor": "#000"},
+        "editOptions": {"poly": {"allowIntersection": False}},
+        "events": ["click"],
+    }
+
+
+def test_draw_rejects_unsupported_options() -> None:
+    with pytest.raises(ValueError, match="Unsupported Draw position"):
+        Draw(position="middle")
+
+    with pytest.raises(NotImplementedError, match="feature_group"):
+        Draw(feature_group=object())
+
+
+def test_render_includes_draw_control_assets() -> None:
+    m = Map([35.0, 139.0], api_key="test-key")
+    Draw(
+        export=True,
+        filename="features.geojson",
+        position="topleft",
+        draw_options={"marker": True, "polyline": False, "polygon": True, "rectangle": False, "circle": False},
+    ).add_to(m)
+
+    html = m.render_fragment()
+
+    assert '"type":"draw"' in html
+    assert '"export":true' in html
+    assert '"filename":"features.geojson"' in html
+    assert '"marker":true' in html
+    assert '"polyline":false' in html
+    assert '"polygon":true' in html
+    assert '"rectangle":false' in html
+    assert '"circle":false' in html
+    assert '"mapId":"DEMO_MAP_ID"' in html
+    assert "setupDrawControl(spec)" in html
+    assert "dataset.fgmDrawControl" in html
+    assert "drawControlPosition(spec.position)" in html
+    assert "google.maps.ControlPosition.TOP_LEFT" in html
+    assert 'button.dataset.fgmDrawMode = nextMode' in html
+    assert 'separator.dataset.fgmDrawSeparator = "true"' in html
+    assert 'button.dataset.fgmDrawAction = label.toLowerCase()' in html
+    assert 'button.style.background = "#fff"' in html
+    assert 'button.style.border = "1px solid #dadce0"' in html
+    assert 'button.style.color = "#202124"' in html
+    assert 'button.style.background = selected ? "#1a73e8" : "#fff"' in html
+    assert 'button.style.borderColor = selected ? "#1a73e8" : "#dadce0"' in html
+    assert 'if (enabled("marker")) addButton("Marker", "marker")' in html
+    assert 'if (enabled("polyline")) addButton("Line", "polyline")' in html
+    assert 'if (enabled("polygon")) addButton("Polygon", "polygon")' in html
+    assert 'if (enabled("rectangle")) addButton("Rectangle", "rectangle")' in html
+    assert 'if (enabled("circle")) addButton("Circle", "circle")' in html
+    assert "finishButton = addActionButton(\"Finish\", () => finishPath())" in html
+    assert "function updateFinishButton()" in html
+    assert 'mode === "polyline" && draftPath.length >= 2' in html
+    assert 'mode === "polygon" && draftPath.length >= 3' in html
+    assert "function updatePathPreview(latLng)" in html
+    assert "const previewPath = [...draftPath, latLng]" in html
+    assert "updatePathPreview(event.latLng)" in html
+    assert "draftOverlay.setPath(draftPath)" in html
+    assert "draftOverlay.setPaths(draftPath)" in html
+    assert "new Polygon({ map, paths: draftPath, clickable: false" in html
+    assert "new Polyline({ map, path: draftPath, clickable: false" in html
+    assert "finishButton.disabled = !canFinish" in html
+    assert 'finishButton.style.background = canFinish ? "#1a73e8" : "#f1f3f4"' in html
+    assert 'finishButton.style.borderColor = canFinish ? "#1a73e8" : "#dadce0"' in html
+    assert 'finishButton.style.opacity = canFinish ? "1" : "0.65"' in html
+    assert "function updateDrawnActionButtons()" in html
+    assert "const hasDrawnItems = drawnItems.length > 0" in html
+    assert "clearButton.disabled = !hasDrawnItems" in html
+    assert 'clearButton.style.background = hasDrawnItems ? "#fce8e6" : "#f1f3f4"' in html
+    assert 'exportLink.setAttribute("aria-disabled", hasDrawnItems ? "false" : "true")' in html
+    assert 'exportLink.style.background = hasDrawnItems ? "#e6f4ea" : "#f1f3f4"' in html
+    assert "if (!drawnItems.length)" in html
+    assert "event.preventDefault()" in html
+    assert 'clearButton = addActionButton("Clear", () => clearDrawnItems(), { background: "#fce8e6"' in html
+    assert 'exportLink.style.background = "#e6f4ea"' in html
+    assert 'exportLink.style.color = "#137333"' in html
+    assert "clickable: false" in html
+    assert "draftOverlay.setOptions({ clickable: spec.showGeometryOnClick })" in html
+    assert "new AdvancedMarkerElement" in html
+    assert "new Polyline" in html
+    assert "new Polygon" in html
+    assert "new Rectangle" in html
+    assert "new Circle" in html
+    assert "toFeatureCollection()" in html
+    assert 'exportLink.dataset.fgmDrawExport = "true"' in html
+    assert "radiusMeters" in html
+    assert "gmaprium-draw-created" in html
+    assert "gmaprium-draw-updated" in html
+    assert "function drawState(lastFeature)" in html
+    assert "all_drawings: drawnItems.map(toFeature)" in html
+    assert "last_active_drawing: lastFeature" in html
+    assert "dispatchDrawState(feature)" in html
+    assert "dispatchDrawState(null)" in html
+    assert "alert(JSON.stringify(toFeature(item)))" in html
+    assert 'const clickEvent = type === "marker" ? "gmp-click" : "click"' in html
+    assert "latLngCoordinates(item.overlay.position)" in html
+    assert "FeatureCollection" in html
+
+
+def test_render_includes_choropleth_assets_and_legend() -> None:
+    m = Map([35.0, 139.0], api_key="test-key")
+    Choropleth(
+        _sample_choropleth_geojson(),
+        data={"a": 1, "b": 2},
+        key_on="feature.properties.id",
+        name="Areas",
+        legend_name="Area values",
+        highlight=True,
+    ).add_to(m)
+    LayerControl().add_to(m)
+
+    html = m.render_fragment()
+
+    assert '"type":"choropleth"' in html
+    assert "__gmaprium_choropleth_style" in html
+    assert 'feature.getProperty("__gmaprium_choropleth_style")' in html
+    assert 'layer.addListener("mouseover"' in html
+    assert 'layer.addListener("mouseout"' in html
+    assert "overrideStyle(event.feature, spec.highlightStyle)" in html
+    assert "legendControl.dataset.fgmChoroplethLegend" in html
+    assert "LEFT_BOTTOM" in html
+    assert "Area values" in html
+    assert "Areas" in html
+    assert "entry.layerVisible = checkbox.checked" in html
 
 
 def test_heatmap_accepts_supported_point_formats() -> None:

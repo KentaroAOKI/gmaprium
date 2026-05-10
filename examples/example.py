@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from gmaprium import Circle, GeoJson, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
+from gmaprium import Choropleth, Circle, Draw, GeoJson, HeatMap, LayerControl, Map, Marker, Polygon, Polyline
 
 
 api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "YOUR_GOOGLE_MAPS_API_KEY")
@@ -79,6 +79,53 @@ GeoJson(
     },
 ).add_to(m)
 
+Choropleth(
+    geo_data={
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"id": "central"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [139.760, 35.675],
+                            [139.785, 35.675],
+                            [139.785, 35.695],
+                            [139.760, 35.695],
+                            [139.760, 35.675],
+                        ]
+                    ],
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {"id": "east"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [139.790, 35.675],
+                            [139.815, 35.675],
+                            [139.815, 35.695],
+                            [139.790, 35.695],
+                            [139.790, 35.675],
+                        ]
+                    ],
+                },
+            },
+        ],
+    },
+    data={"central": 32, "east": 74},
+    key_on="feature.properties.id",
+    bins=[0, 50, 100],
+    fill_color="YlOrRd",
+    name="Choropleth",
+    legend_name="Sample values",
+    highlight=True,
+).add_to(m)
+
 HeatMap(
     [
         [35.6812, 139.7671, 1.0],
@@ -94,6 +141,8 @@ HeatMap(
     name="Heat",
     max_zoom=14,
 ).add_to(m)
+
+Draw(export=True, filename="drawn.geojson", position="topleft").add_to(m)
 
 LayerControl().add_to(m)
 
